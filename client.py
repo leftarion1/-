@@ -8,6 +8,7 @@ HEIGHT = 600
 CC = (WIDTH // 2, HEIGHT // 2)
 old = (0, 0)
 radius = 50
+BLACK = pygame.Color(0, 0, 0)
 
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
 pygame.display.set_caption("Бактерии")
@@ -15,6 +16,10 @@ pygame.display.set_caption("Бактерии")
 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)  # Настраиваем сокет
 sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)  # Отключаем пакетирование
 sock.connect(("localhost", 10000))
+font = pygame.font.Font(None, 25)
+text = font.render("Leftarion", True, BLACK)
+text_rect = text.get_rect(center=(WIDTH / 2, HEIGHT / 2))
+screen.blit(text, text_rect)
 run = True
 while run:
     for event in pygame.event.get():
@@ -39,6 +44,7 @@ while run:
     print("Получил:", data)
     screen.fill('gray')
     pygame.draw.circle(screen, (255, 0, 0), CC, radius)
+    screen.blit(text, text_rect)
     pygame.display.update()
 
 
