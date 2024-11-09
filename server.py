@@ -1,7 +1,6 @@
 import socket
-import time
-import pygame
 
+import pygame
 from sqlalchemy import Column, Integer, String
 from sqlalchemy import create_engine
 from sqlalchemy.orm import declarative_base
@@ -18,7 +17,7 @@ main_socket.setblocking(False)
 main_socket.listen(5)
 print("Сокет создался")
 
-#Создание серверного окна
+# Создание серверного окна
 pygame.init()
 WIDHT_ROOM, HEIGHT_ROOM = 4000, 4000
 WIDHT_SERVER, HEIGHT_SERVER = 300, 300
@@ -26,6 +25,19 @@ FPS = 100
 screen = pygame.display.set_mode((WIDHT_SERVER, HEIGHT_SERVER))
 pygame.display.set_caption("Сервер")
 clock = pygame.time.Clock()
+
+
+def find(vector: str):
+    first = None
+    for num, sign in enumerate(vector):
+        if sign == "<":
+            first = num
+        if sign == ">" and first is not None:
+            second = num
+            result = vector[first + 1:second]
+            result = result.split(",")
+            result = list(map(float, result))
+            return result
 
 
 class Player(Base):
@@ -65,6 +77,15 @@ class LocalPlayer:
         self.x += self.speed_x
         self.y += self.speed_y
 
+    def change_speed(self, vector):
+        vector = find(vector)
+        if vector[0] == 0 and vector[1] == 0:
+            self.speed_x = self.speed_y = 0
+        else:
+            vector = vector[0] * self.abs_speed, vector[1] * self.abs_speed
+            self.speed_x = vector[0]
+            self.speed_y = vector[1]
+
 
 Base.metadata.create_all(bind=engine)
 
@@ -94,6 +115,7 @@ while server_works:
         try:
             data = players[id].sock.recv(1024).decode()
             print("Получил", data)
+            players[id].change_speed(data)
         except:
             pass
     # Отправляем статус игрового поля
@@ -117,10 +139,11 @@ while server_works:
         y = player.y * HEIGHT_SERVER // HEIGHT_ROOM
         size = player.size * WIDHT_SERVER // WIDHT_ROOM
         pygame.draw.circle(screen, "yellow2", (x, y), size)
-        pygame.display.update()
+    for id in list(players):
+        player = players[id]
+        players[id].update()
+    pygame.display.update()
 pygame.quit()
 main_socket.close()
 s.query(Player).delete()
 s.commit()
-
-
