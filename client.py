@@ -1,8 +1,8 @@
 import math
 import socket
 import tkinter as tk
-from tkinter import ttk
 import tkinter.messagebox
+from tkinter import ttk
 
 import pygame
 
@@ -21,6 +21,28 @@ def login():
         root.quit()
     else:
         tk.messagebox.showerror("Ошибка", "Ты не выбрал цвет или не ввёл имя!")
+
+
+def find(vector: str):
+    first = None
+    for num, sign in enumerate(vector):
+        if sign == "<":
+            first = num
+        if sign == ">" and first is not None:
+            second = num
+            result = vector[first + 1:second]  # Поменяли
+            return result
+    return ""
+
+
+def draw_bacteries(data: list[str]):
+    for num, bact in enumerate(data):
+        data = bact.split(" ")  # Разбиваем по пробелам подстроку одной бактерии
+        x = CC[0] + int(data[0])
+        y = CC[1] + int(data[1])
+        size = int(data[2])
+        color = data[3]
+        pygame.draw.circle(screen, color, (x, y), size)
 
 
 pygame.init()
@@ -95,8 +117,11 @@ while run:
 
     # Получаем
     data = sock.recv(1024).decode()
-    print("Получил:", data)
+    # print("Получил:", data)
+    data = find(data).split(",")  # Разбиваем на шары
     screen.fill('gray')
+    if data != ['']:
+        draw_bacteries(data)
     pygame.draw.circle(screen, color, CC, radius)
     screen.blit(text, text_rect)
     pygame.display.update()

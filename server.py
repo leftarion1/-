@@ -40,6 +40,18 @@ def find(vector: str):
             return result
 
 
+def find_color(info: str):
+    first = None
+    for num, sign in enumerate(info):
+        if sign == "<":
+            first = num
+        if sign == ">" and first is not None:
+            second = num
+            result = info[first + 1:second].split(",")
+            return result
+    return ""
+
+
 class Player(Base):
     __tablename__ = "gamers"
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -52,6 +64,9 @@ class Player(Base):
     abs_speed = Column(Integer, default=2)
     speed_x = Column(Integer, default=2)
     speed_y = Column(Integer, default=2)
+    color = Column(String(250), default="red")  # Добавили цвет
+    w_vision = Column(Integer, default=800)
+    h_vision = Column(Integer, default=600)  # Добавили размер
 
     def __init__(self, name, address):
         self.name = name
@@ -72,6 +87,9 @@ class LocalPlayer:
         self.abs_speed = 1
         self.speed_x = 0
         self.speed_y = 0
+        self.color = "red"
+        self.w_vision = 800
+        self.h_vision = 600
 
     def update(self):
         self.x += self.speed_x
@@ -86,8 +104,36 @@ class LocalPlayer:
             self.speed_x = vector[0]
             self.speed_y = vector[1]
 
+    def sync(self):
+        self.db.size = self.size
+        self.db.abs_speed = self.abs_speed
+        self.db.speed_x = self.speed_x
+        self.db.speed_y = self.speed_y
+        self.db.errors = self.errors
+        self.db.x = self.x
+        self.db.y = self.y
+        self.db.color = self.color
+        self.db.w_vision = self.w_vision
+        self.db.h_vision = self.h_vision
+        s.merge(self.db)
+        s.commit()
+
+    def load(self):
+        self.size = self.db.size
+        self.abs_speed = self.db.abs_speed
+        self.speed_x = self.db.speed_x
+        self.speed_y = self.db.speed_y
+        self.errors = self.db.errors
+        self.x = self.db.x
+        self.y = self.db.y
+        self.color = self.db.color
+        self.w_vision = self.db.w_vision
+        self.h_vision = self.db.h_vision
+        return self
+
 
 Base.metadata.create_all(bind=engine)
+# Base.metadata.drop_all(bind=engine)
 
 players = {}
 server_works = True
@@ -99,13 +145,17 @@ while server_works:
         new_socket, addr = main_socket.accept()  # принимаем входящие
         print('Подключился', addr)
         new_socket.setblocking(False)
+        login = new_socket.recv(1024).decode()
         player = Player("Имя", addr)
+        if login.startswith("color"):
+            data = find_color(login[6:])
+            player.name, player.color = data
         s.merge(player)
         s.commit()
         addr = f'({addr[0]},{addr[1]})'
         data = s.query(Player).filter(Player.address == addr)
         for user in data:
-            player = LocalPlayer(user.id, "Имя", new_socket, addr)
+            player = LocalPlayer(user.id, "Имя", new_socket, addr).load()
             players[user.id] = player
 
     except BlockingIOError:
@@ -118,10 +168,44 @@ while server_works:
             players[id].change_speed(data)
         except:
             pass
+    # Определим, что видит каждый игрок
+    visible_bacteries = {}
+    for id in list(players):
+        visible_bacteries[id] = []
+    pairs = list(players.items())
+    for i in range(0, len(pairs)):
+        for j in range(i + 1, len(pairs)):
+            # Рассматриваем пару игроков
+            hero_1: Player = pairs[i][1]
+            hero_2: Player = pairs[j][1]
+            dist_x = hero_2.x - hero_1.x
+            dist_y = hero_2.y - hero_1.y
+            # i-й игрок видит j-того
+            if abs(dist_x) <= hero_1.w_vision // 2 + hero_2.size and abs(dist_y) <= hero_1.h_vision // 2 + hero_2.size:
+                # Подготовим данные к добавлению в список
+                x_ = str(round(dist_x))
+                y_ = str(round(dist_y))  # временные
+                size_ = str(round(hero_2.size))
+                color_ = hero_2.color
+                data = x_ + " " + y_ + " " + size_ + " " + color_
+                visible_bacteries[hero_1.id].append(data)
+            # j-й игрок видит i-того
+            if abs(dist_x) <= hero_2.w_vision // 2 + hero_1.size and abs(dist_y) <= hero_2.h_vision // 2 + hero_1.size:
+                # Подготовим данные к добавлению в список
+                x_ = str(round(-dist_x))
+                y_ = str(round(-dist_y))  # временные
+                size_ = str(round(hero_1.size))
+                color_ = hero_1.color
+
+                data = x_ + " " + y_ + " " + size_ + " " + color_
+                visible_bacteries[hero_2.id].append(data)
+    # Формируем ответ каждой бактерии
+    for id in list(players):
+        visible_bacteries[id] = "<" + ",".join(visible_bacteries[id]) + ">"
     # Отправляем статус игрового поля
     for id in list(players):
         try:
-            players[id].sock.send("Игра".encode())
+            players[id].sock.send(visible_bacteries[id].encode())
         except:
             players[id].sock.close()
             del players[id]
@@ -138,7 +222,7 @@ while server_works:
         x = player.x * WIDHT_SERVER // WIDHT_ROOM
         y = player.y * HEIGHT_SERVER // HEIGHT_ROOM
         size = player.size * WIDHT_SERVER // WIDHT_ROOM
-        pygame.draw.circle(screen, "yellow2", (x, y), size)
+        pygame.draw.circle(screen, player.color, (x, y), size)
     for id in list(players):
         player = players[id]
         players[id].update()
