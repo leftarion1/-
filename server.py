@@ -1,13 +1,13 @@
+import math
+import random
 import socket
 
 import pygame
+from russian_names import RussianNames
 from sqlalchemy import Column, Integer, String
 from sqlalchemy import create_engine
 from sqlalchemy.orm import declarative_base
 from sqlalchemy.orm import sessionmaker
-
-from russian_names import RussianNames
-import random
 
 engine = create_engine("postgresql://postgres:test_postgres@localhost:5433/bacterias")
 Session = sessionmaker(bind=engine)
@@ -26,11 +26,13 @@ WIDHT_ROOM, HEIGHT_ROOM = 4000, 4000
 WIDHT_SERVER, HEIGHT_SERVER = 300, 300
 FPS = 100
 colors = ['Maroon', 'DarkRed', 'FireBrick', 'Red', 'Salmon', 'Tomato', 'Coral', 'OrangeRed', 'Chocolate', 'SandyBrown',
-        'DarkOrange', 'Orange', 'DarkGoldenrod', 'Goldenrod', 'Gold', 'Olive', 'Yellow', 'YellowGreen', 'GreenYellow',
-        'Chartreuse', 'LawnGreen', 'Green', 'Lime', 'SpringGreen', 'MediumSpringGreen', 'Turquoise',
-        'LightSeaGreen', 'MediumTurquoise', 'Teal', 'DarkCyan', 'Aqua', 'Cyan', 'DeepSkyBlue',
-        'DodgerBlue', 'RoyalBlue', 'Navy', 'DarkBlue', 'MediumBlue']
+          'DarkOrange', 'Orange', 'DarkGoldenrod', 'Goldenrod', 'Gold', 'Olive', 'Yellow', 'YellowGreen', 'GreenYellow',
+          'Chartreuse', 'LawnGreen', 'Green', 'Lime', 'SpringGreen', 'MediumSpringGreen', 'Turquoise',
+          'LightSeaGreen', 'MediumTurquoise', 'Teal', 'DarkCyan', 'Aqua', 'Cyan', 'DeepSkyBlue',
+          'DodgerBlue', 'RoyalBlue', 'Navy', 'DarkBlue', 'MediumBlue']
 MOBS_QUANTITY = 25
+FOOD_SIZE = 15
+FOOD_QUANTITY = WIDHT_ROOM * HEIGHT_ROOM // 40000
 # Создание мобов
 names = RussianNames(count=MOBS_QUANTITY * 2, patronymic=False, surname=False, rare=True)
 names = list(set(names))  # Список неповторяющихся имён
@@ -160,6 +162,18 @@ class LocalPlayer:
         self.h_vision = self.db.h_vision
         return self
 
+    def new_speed(self):
+        #  Меняем абсолютную скорость игрока
+        self.abs_speed = 10 / math.sqrt(self.size)
+
+
+class Food:
+    def __init__(self, x, y, size, color):
+        self.x = x
+        self.y = y
+        self.size = size
+        self.color = color
+
 
 Base.metadata.create_all(bind=engine)
 # Base.metadata.drop_all(bind=engine)
@@ -175,7 +189,15 @@ for x in range(MOBS_QUANTITY):
     s.commit()
     local_mob = LocalPlayer(server_mob.id, server_mob.name, None, None).load()
     players[server_mob.id] = local_mob  # Записываем всех мобов в словарь
-
+# Создание еды
+foods = []
+for i in range(FOOD_QUANTITY):
+  foods.append(Food(
+      x=random.randint(0, WIDHT_ROOM),
+      y=random.randint(0, HEIGHT_ROOM),
+      size=FOOD_SIZE,
+      color=random.choice(colors)
+  ))
 tick = -1
 server_works = True
 while server_works:
@@ -199,6 +221,22 @@ while server_works:
             for user in data:
                 player = LocalPlayer(user.id, "Имя", new_socket, addr).load()
                 players[user.id] = player
+            need = MOBS_QUANTITY - len(players)
+            if need > 0:
+                names = RussianNames(count=need * 2, patronymic=False, surname=False, rare=True)
+                names = list(set(names))  # Список неповторяющихся имён
+                for i in range(need):
+                    server_mob = Player(names[i], None)
+                    server_mob.color = random.choice(colors)
+                    spawn: LocalPlayer = random.choice(foods)
+                    foods.remove(spawn)  # Удаляем бактерию, чтобы моб её не съел
+                    server_mob.x, server_mob.y = spawn.x, spawn.y
+                    server_mob.size = random.randint(10, 100)
+                    s.add(server_mob)
+                    s.commit()
+                    local_mob = LocalPlayer(server_mob.id, server_mob.name, None, None).load()
+                    local_mob.new_speed()
+                    players[server_mob.id] = local_mob  # Записываем новых мобов в словарь
 
         except BlockingIOError:
             pass
@@ -222,6 +260,30 @@ while server_works:
         visible_bacteries[id] = []
     pairs = list(players.items())
     for i in range(0, len(pairs)):
+        # Только для игрока, отображение еды
+        for food in foods:
+            hero: LocalPlayer = pairs[i][1]
+            dist_x = food.x - hero.x
+            dist_y = food.y - hero.y
+            if abs(dist_x) <= hero.w_vision // 2 + food.size and abs(dist_y) <= hero.h_vision // 2 + food.size:
+                # Проверка может ли 1-й игрок видеть еду.
+                distance = math.sqrt(dist_x ** 2 + dist_y ** 2)
+                if distance < hero.size:
+                    # Тут мы в будущем напишем код увеличения размера
+                    hero.size = math.sqrt(hero.size ** 2 + food.size ** 2)
+                    food.size = 0
+                    foods.remove(food)
+                    hero.new_speed()
+                if hero.address is not None and food.size != 0:
+                    # Подготовим данные к добавлению в список
+                    x_ = str(round(dist_x))
+                    y_ = str(round(dist_y))  # временные
+                    size_ = str(round(food.size))
+                    color_ = food.color
+
+                    data = x_ + " " + y_ + " " + size_ + " " + color_
+                    visible_bacteries[hero.id].append(data)
+
         for j in range(i + 1, len(pairs)):
             # Рассматриваем пару игроков
             hero_1: Player = pairs[i][1]
@@ -230,6 +292,13 @@ while server_works:
             dist_y = hero_2.y - hero_1.y
             # i-й игрок видит j-того
             if abs(dist_x) <= hero_1.w_vision // 2 + hero_2.size and abs(dist_y) <= hero_1.h_vision // 2 + hero_2.size:
+                # Проверка может ли 1-й съесть 2-го игрока
+                distance = math.sqrt(dist_x ** 2 + dist_y ** 2)
+                if distance <= hero_1.size and hero_1.size > 1.1 * hero_2.size:
+                    hero_1.size = math.sqrt(hero_1.size ** 2 + hero_2.size ** 2)
+                    hero_1.new_speed()
+                    # В будущем меняем радиус первого игрока
+                    hero_2.size, hero_2.speed_x, hero_2.speed_y = 0, 0, 0
                 # Подготовим данные к добавлению в список
                 if hero_1.address is not None:
                     x_ = str(round(dist_x))
@@ -240,6 +309,13 @@ while server_works:
                     visible_bacteries[hero_1.id].append(data)
             # j-й игрок видит i-того
             if abs(dist_x) <= hero_2.w_vision // 2 + hero_1.size and abs(dist_y) <= hero_2.h_vision // 2 + hero_1.size:
+                # Проверка может ли 2-й съесть 1-го игрока
+                distance = math.sqrt(dist_x ** 2 + dist_y ** 2)
+                if distance <= hero_2.size and hero_2.size > 1.1 * hero_1.size:
+                    hero_2.size = math.sqrt(hero_2.size ** 2 + hero_1.size ** 2)
+                    hero_2.new_speed()
+                    # В будущем меняем радиус второго игрока
+                    hero_1.size, hero_1.speed_x, hero_1.speed_y = 0, 0, 0
                 # Подготовим данные к добавлению в список
                 if hero_2.address is not None:
                     x_ = str(round(-dist_x))
@@ -249,8 +325,11 @@ while server_works:
 
                     data = x_ + " " + y_ + " " + size_ + " " + color_
                     visible_bacteries[hero_2.id].append(data)
+
     # Формируем ответ каждой бактерии
     for id in list(players):
+        r_ = str(round(players[id].size))
+        visible_bacteries[id] = [r_] + visible_bacteries[id]  # Добавляем в начало списка размер игрока
         visible_bacteries[id] = "<" + ",".join(visible_bacteries[id]) + ">"
     # Отправляем статус игрового поля
     for id in list(players):
@@ -264,6 +343,14 @@ while server_works:
                 s.query(Player).filter(Player.id == id).delete()
                 s.commit()
                 print("Сокет закрыт")
+    # Чистим список от отвалившихся игроков
+    for id in list(players):
+        if players[id].errors >= 500 or players[id].size == 0:
+            if players[id].sock is not None:
+                players[id].sock.close()
+            del players[id]
+            s.query(Player).filter(Player.id == id).delete()
+            s.commit()
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             server_works = False
