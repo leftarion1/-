@@ -121,7 +121,8 @@ while run:
     data = find(data).split(",")  # Разбиваем на шары
     screen.fill('gray')
     if data != ['']:
-        draw_bacteries(data)
+        radius = int(data[0])  # Сохраняем размер из сообщения в переменную
+        draw_bacteries(data[1:])  # Срезаем размер, чтобы он не попадал в ф-ию рисования соседей
     pygame.draw.circle(screen, color, CC, radius)
     screen.blit(text, text_rect)
     pygame.display.update()
