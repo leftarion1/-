@@ -7,6 +7,34 @@ from tkinter import ttk
 import pygame
 
 
+class Grid:
+    def __init__(self, screen, color):
+        self.screen = screen
+        self.x = 0
+        self.y = 0
+        self.start_size = 200
+        self.size = self.start_size
+        self.color = color
+
+    def update(self, parameters: list[int]):
+        x, y, L = parameters
+        self.size = self.start_size // L
+        self.x = -self.size + (-x) % self.size
+        self.y = -self.size + (-y) % self.size
+
+    def draw(self):
+        for i in range(WIDTH // self.size + 2):
+            pygame.draw.line(self.screen, self.color,
+                             (self.x + i * self.size, 0),  # Координаты начала линии
+                             (self.x + i * self.size, HEIGHT),  # Координаты конца линии
+                             1)
+        for i in range(HEIGHT // self.size + 2):
+            pygame.draw.line(self.screen, self.color,
+                             (0, self.y + i * self.size),  # Координаты начала линии
+                             (WIDTH, self.y + i * self.size),  # Координаты конца линии
+                             1)
+
+
 def scroll(event):
     global color
     color = combo.get()
@@ -24,6 +52,7 @@ def login():
 
 
 def find(vector: str):
+    global buffer
     first = None
     for num, sign in enumerate(vector):
         if sign == "<":
@@ -32,6 +61,7 @@ def find(vector: str):
             second = num
             result = vector[first + 1:second]  # Поменяли
             return result
+    buffer = int(buffer * 1.5)
     return ""
 
 
@@ -53,6 +83,7 @@ old = (0, 0)
 radius = 50
 name = ""
 color = ""
+buffer = 1024
 BLACK = pygame.Color(0, 0, 0)
 colors = ['Maroon', 'DarkRed', 'FireBrick', 'Red', 'Salmon', 'Tomato', 'Coral', 'OrangeRed', 'Chocolate', 'SandyBrown',
           'DarkOrange', 'Orange', 'DarkGoldenrod', 'Goldenrod', 'Gold', 'Olive', 'Yellow', 'YellowGreen', 'GreenYellow',
@@ -97,6 +128,7 @@ font = pygame.font.Font(None, 25)
 text = font.render("Leftarion", True, BLACK)
 text_rect = text.get_rect(center=(WIDTH / 2, HEIGHT / 2))
 screen.blit(text, text_rect)
+grid = Grid(screen, "seashell4")
 run = True
 while run:
     for event in pygame.event.get():
@@ -116,12 +148,15 @@ while run:
                 sock.send(msg.encode())
 
     # Получаем
-    data = sock.recv(1024).decode()
+    data = sock.recv(buffer).decode()
     # print("Получил:", data)
     data = find(data).split(",")  # Разбиваем на шары
-    screen.fill('gray')
+    screen.fill('gray25')
     if data != ['']:
-        radius = int(data[0])  # Сохраняем размер из сообщения в переменную
+        parameters = list(map(int, data[0].split(" ")))
+        radius = parameters[0]  # Сохраняем размер из сообщения в переменную
+        grid.update(parameters[1:])
+        grid.draw()
         draw_bacteries(data[1:])  # Срезаем размер, чтобы он не попадал в ф-ию рисования соседей
     pygame.draw.circle(screen, color, CC, radius)
     screen.blit(text, text_rect)
