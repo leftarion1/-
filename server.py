@@ -105,6 +105,7 @@ class LocalPlayer:
         self.color = "red"
         self.w_vision = 800
         self.h_vision = 600
+        self.L = 1
 
     def update(self):
         # х координата
@@ -125,6 +126,19 @@ class LocalPlayer:
                 self.y += self.speed_y  # то двигаем его
         else:  # Если игрок находится в границе комнаты
             self.y += self.speed_y
+
+        # Меняем масштаб игрока
+        if self.size >= self.w_vision / 4:
+            if self.w_vision <= WIDHT_ROOM or self.h_vision <= HEIGHT_ROOM:
+                self.L *= 2
+                self.w_vision = 800 * self.L
+                self.h_vision = 600 * self.L
+
+        if self.size < self.w_vision / 8 and self.size < self.h_vision / 8:
+            if self.L > 1:
+                self.L //= 2
+                self.w_vision = 800 * self.L
+                self.h_vision = 600 * self.L
 
     def change_speed(self, vector):
         vector = find(vector)
@@ -237,6 +251,15 @@ while server_works:
                     local_mob = LocalPlayer(server_mob.id, server_mob.name, None, None).load()
                     local_mob.new_speed()
                     players[server_mob.id] = local_mob  # Записываем новых мобов в словарь
+                # Добавляем список еды
+                need = FOOD_QUANTITY - len(foods)
+                for i in range(need):
+                    foods.append(Food(
+                        x=random.randint(0, WIDHT_ROOM),
+                        y=random.randint(0, HEIGHT_ROOM),
+                        size=FOOD_SIZE,
+                        color=random.choice(colors)
+                    ))
 
         except BlockingIOError:
             pass
@@ -276,9 +299,9 @@ while server_works:
                     hero.new_speed()
                 if hero.address is not None and food.size != 0:
                     # Подготовим данные к добавлению в список
-                    x_ = str(round(dist_x))
-                    y_ = str(round(dist_y))  # временные
-                    size_ = str(round(food.size))
+                    x_ = str(round(dist_x/hero.L))
+                    y_ = str(round(dist_y/hero.L))  # временные
+                    size_ = str(round(food.size/hero.L))
                     color_ = food.color
 
                     data = x_ + " " + y_ + " " + size_ + " " + color_
@@ -301,9 +324,9 @@ while server_works:
                     hero_2.size, hero_2.speed_x, hero_2.speed_y = 0, 0, 0
                 # Подготовим данные к добавлению в список
                 if hero_1.address is not None:
-                    x_ = str(round(dist_x))
-                    y_ = str(round(dist_y))  # временные
-                    size_ = str(round(hero_2.size))
+                    x_ = str(round(dist_x/hero_2.L))
+                    y_ = str(round(dist_y/hero_2.L))  # временные
+                    size_ = str(round(hero_2.size/hero_2.L))
                     color_ = hero_2.color
                     data = x_ + " " + y_ + " " + size_ + " " + color_
                     visible_bacteries[hero_1.id].append(data)
@@ -318,9 +341,9 @@ while server_works:
                     hero_1.size, hero_1.speed_x, hero_1.speed_y = 0, 0, 0
                 # Подготовим данные к добавлению в список
                 if hero_2.address is not None:
-                    x_ = str(round(-dist_x))
-                    y_ = str(round(-dist_y))  # временные
-                    size_ = str(round(hero_1.size))
+                    x_ = str(round(-dist_x/hero_1.L))
+                    y_ = str(round(-dist_y/hero_1.L))  # временные
+                    size_ = str(round(hero_1.size/hero_1.L))
                     color_ = hero_1.color
 
                     data = x_ + " " + y_ + " " + size_ + " " + color_
@@ -328,8 +351,11 @@ while server_works:
 
     # Формируем ответ каждой бактерии
     for id in list(players):
-        r_ = str(round(players[id].size))
-        visible_bacteries[id] = [r_] + visible_bacteries[id]  # Добавляем в начало списка размер игрока
+        r_ = str(round(players[id].size/players[id].L))
+        x_ = str(round(players[id].x / players[id].L))
+        y_ = str(round(players[id].y / players[id].L))
+        L_ = str(round(players[id].L))
+        visible_bacteries[id] = [r_ + " " + x_ + " " + y_ + " " + L_] + visible_bacteries[id]  # Добавляем в начало списка размер игрока
         visible_bacteries[id] = "<" + ",".join(visible_bacteries[id]) + ">"
     # Отправляем статус игрового поля
     for id in list(players):
